@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Kibana_Logging
+﻿namespace Kibana_Logging
 {
     public interface ILoggerService
     {

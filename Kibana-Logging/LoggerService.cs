@@ -1,41 +1,40 @@
 ﻿using Elastic.Clients.Elasticsearch;
-using Elastic.Transport;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json;
-using System.Threading.Tasks;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Kibana_Logging
 {
     public class LoggerService : ILoggerService
     {
-        private IConfiguration _configuration;
         private readonly ElasticsearchClient _client;
-        private string _indexName;
+        private string _indexName = "dev-rabbit";
+        private IConfiguration _configuration;
+
         public LoggerService(IConfiguration configuration)
         {
             _configuration = configuration;
 
-            var node = new Uri("http://localhost:9200");
-
-            var settings = new ElasticsearchClientSettings(node)
-                                    .DefaultIndex("Dev-rabbit")
-                                    .PrettyJson();
-            // 👈 Forces compatible-with=8
-
-
-            //if (!string.IsNullOrEmpty(username))
-            //{
-            //    settings.Authentication(new BasicAuthentication(username, password!));
-            //}
+            var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
+            var settings = new ElasticsearchClientSettings(uri)
+                .DefaultIndex(_indexName)
+                .PrettyJson()
+                .DisableDirectStreaming();  // Helps debugging
 
             _client = new ElasticsearchClient(settings);
-            _indexName = "Dev-rabbit";
+
+            CreateIndexIfNotExists().Wait();
         }
+
+        private async Task CreateIndexIfNotExists()
+        {
+            var exists = await _client.Indices.ExistsAsync(_indexName);
+
+            if (!exists.Exists)
+            {
+                await _client.Indices.CreateAsync(_indexName);
+            }
+        }
+
 
         public Task LogInformation(string message, object? data = null)
             => LogAsync("INFO", message, null, data);
@@ -46,28 +45,29 @@ namespace Kibana_Logging
         public Task LogError(string message, Exception ex, object? data = null)
             => LogAsync("ERROR", message, ex, data);
 
-        #region Private Methods
-        private async Task LogAsync(string level, string message, Exception? exception = null, object? data = null)
+        private async Task LogAsync(string level, string message, Exception? ex = null, object? data = null)
         {
             var log = new LogModel
             {
                 Level = level,
                 Message = message,
-                Exception = exception?.ToString(),
-                Source = AppDomain.CurrentDomain.FriendlyName,
-                AdditionalData = data != null ? ConvertObjectToDictionary(data) : null,
+                Timestamp = DateTime.UtcNow,
+                Exception = ex?.ToString(),
+                Source = _configuration["RabbitLogging:Source"] ?? "gopal",
+                AdditionalData = data != null ? ConvertToDict(data) : null
             };
 
-            await _client.IndexAsync(log, idx => idx.Index(_indexName));
+            var response = await _client.IndexAsync(log);
 
-            var response = await _client.GetAsync<LogModel>(1, x => x.Index(_indexName));
-
-            int aaaaaaaaaaaaa = 2;
+            if (!response.IsValidResponse)
+            {
+                Console.WriteLine("Failed to index log: " + response.DebugInformation);
+            }
         }
-        private Dictionary<string, object> ConvertObjectToDictionary(object obj) =>
+
+        private Dictionary<string, object> ConvertToDict(object obj) =>
             JsonSerializer.Deserialize<Dictionary<string, object>>(
                 JsonSerializer.Serialize(obj)
             )!;
-        #endregion Private Methods
     }
 }
