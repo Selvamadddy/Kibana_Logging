@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -30,6 +31,8 @@ namespace Kibana_LoggingService.Controllers
         public IEnumerable<WeatherForecast> Get()
         {
             _loggerService.LogInformation("WeatherForecast Get method called.");
+            _logger.LogInformation("WeatherForecast Get method called.");
+            Debug.WriteLine("This is a test log message");
             var rng = new Random();
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
             {

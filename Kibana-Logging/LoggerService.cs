@@ -1,5 +1,6 @@
 ﻿using Elastic.Clients.Elasticsearch;
 using Microsoft.Extensions.Configuration;
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace Kibana_Logging
@@ -15,10 +16,13 @@ namespace Kibana_Logging
             _configuration = configuration;
 
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
+            Debug.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
+            Debug.WriteLine($"\"LoggerService\" => Kibana logging source : {_configuration["RabbitLogging:Source"]}");
+
             var settings = new ElasticsearchClientSettings(uri)
                 .DefaultIndex(_indexName)
                 .PrettyJson()
-                .DisableDirectStreaming();  // Helps debugging
+                .DisableDirectStreaming();
 
             _client = new ElasticsearchClient(settings);
 
@@ -28,10 +32,12 @@ namespace Kibana_Logging
         private async Task CreateIndexIfNotExists()
         {
             var exists = await _client.Indices.ExistsAsync(_indexName);
+            Debug.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
 
             if (!exists.Exists)
             {
                 await _client.Indices.CreateAsync(_indexName);
+                Debug.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
             }
         }
 
@@ -47,21 +53,31 @@ namespace Kibana_Logging
 
         private async Task LogAsync(string level, string message, Exception? ex = null, object? data = null)
         {
-            var log = new LogModel
+            try
             {
-                Level = level,
-                Message = message,
-                Timestamp = DateTime.UtcNow,
-                Exception = ex?.ToString(),
-                Source = _configuration["RabbitLogging:Source"] ?? "gopal",
-                AdditionalData = data != null ? ConvertToDict(data) : null
-            };
+                var log = new LogModel
+                {
+                    Level = level,
+                    Message = message,
+                    Timestamp = DateTime.UtcNow,
+                    Exception = ex?.ToString(),
+                    Source = _configuration["RabbitLogging:Source"] ?? throw new ArgumentException("Source can not be null or empty."),
+                    AdditionalData = data != null ? ConvertToDict(data) : null
+                };
 
-            var response = await _client.IndexAsync(log);
+                var response = await _client.IndexAsync(log);
 
-            if (!response.IsValidResponse)
+                Debug.WriteLine($"Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
+
+                if (response != null && !response.IsValidResponse)
+                {
+                    Console.WriteLine("Failed to index log: " + response.DebugInformation);
+                    Debug.WriteLine("\"LoggerService\" => Failed to index log: " + response.DebugInformation);
+                }
+            }
+            catch (Exception logEx)
             {
-                Console.WriteLine("Failed to index log: " + response.DebugInformation);
+                Debug.WriteLine($"\"LoggerService\" => Failed to log to Elasticsearch: {logEx.Message}");
             }
         }
 
