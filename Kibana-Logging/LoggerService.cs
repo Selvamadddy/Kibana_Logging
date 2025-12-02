@@ -18,7 +18,6 @@ namespace Kibana_Logging
 
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
             Trace.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
-            Trace.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
             Trace.WriteLine($"\"LoggerService\" => Kibana logging source : {_configuration["RabbitLogging:Source"]}");
 
             var settings = new ElasticsearchClientSettings(uri)
@@ -69,7 +68,7 @@ namespace Kibana_Logging
 
                 var response = await _client.IndexAsync(log);
 
-                Trace.WriteLine($"Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
+                Trace.WriteLine($"\"LoggerService\" => Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
 
                 if (response != null && !response.IsValidResponse)
                 {
