@@ -16,8 +16,9 @@ namespace Kibana_Logging
             _configuration = configuration;
 
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
-            Debug.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
-            Debug.WriteLine($"\"LoggerService\" => Kibana logging source : {_configuration["RabbitLogging:Source"]}");
+            Console.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
+            Console.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
+            Console.WriteLine($"\"LoggerService\" => Kibana logging source : {_configuration["RabbitLogging:Source"]}");
 
             var settings = new ElasticsearchClientSettings(uri)
                 .DefaultIndex(_indexName)
@@ -32,12 +33,12 @@ namespace Kibana_Logging
         private async Task CreateIndexIfNotExists()
         {
             var exists = await _client.Indices.ExistsAsync(_indexName);
-            Debug.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
+            Console.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
 
             if (!exists.Exists)
             {
                 await _client.Indices.CreateAsync(_indexName);
-                Debug.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
+                Console.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
             }
         }
 
@@ -67,17 +68,17 @@ namespace Kibana_Logging
 
                 var response = await _client.IndexAsync(log);
 
-                Debug.WriteLine($"Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
+                Console.WriteLine($"Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
 
                 if (response != null && !response.IsValidResponse)
                 {
                     Console.WriteLine("Failed to index log: " + response.DebugInformation);
-                    Debug.WriteLine("\"LoggerService\" => Failed to index log: " + response.DebugInformation);
+                    Console.WriteLine("\"LoggerService\" => Failed to index log: " + response.DebugInformation);
                 }
             }
             catch (Exception logEx)
             {
-                Debug.WriteLine($"\"LoggerService\" => Failed to log to Elasticsearch: {logEx.Message}");
+                Console.WriteLine($"\"LoggerService\" => Failed to log to Elasticsearch: {logEx.Message}");
             }
         }
 
