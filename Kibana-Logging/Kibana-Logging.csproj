@@ -5,6 +5,10 @@
     <RootNamespace>Kibana_Logging</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Title>Kibana-Logging</Title>
+    <Authors>Selvamadhavan N</Authors>
+    <Company>Selvamadhavan N</Company>
+    <Description>This package is used to log data in Elasticsearch.</Description>
   </PropertyGroup>
 
   <ItemGroup>
