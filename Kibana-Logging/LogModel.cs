@@ -7,6 +7,7 @@ namespace Kibana_Logging
         public required string Message { get; set; }
         public DateTime Timestamp { get; set; } = DateTime.UtcNow;
         public string? Exception { get; set; }
+        public string? StackTrace { get; set; }
         public string? Source { get; set; }
         public Dictionary<string, object>? AdditionalData { get; set; }
     }

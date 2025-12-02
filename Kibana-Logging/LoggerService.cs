@@ -17,8 +17,8 @@ namespace Kibana_Logging
             Trace.Listeners.Add(new DefaultTraceListener());
 
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
-            Trace.WriteLine($"\"LoggerService\" => Kibana uri : {uri.ToString()}");
-            Trace.WriteLine($"\"LoggerService\" => Kibana logging source : {_configuration["RabbitLogging:Source"]}");
+            Trace.WriteLine($"\"LoggerService\" => Elasticsearch uri : {uri.ToString()}");
+            Trace.WriteLine($"\"LoggerService\" => Elasticsearch logging source : {_configuration["RabbitLogging:Source"]}");
 
             var settings = new ElasticsearchClientSettings(uri)
                 .DefaultIndex(_indexName)
@@ -30,19 +30,6 @@ namespace Kibana_Logging
             CreateIndexIfNotExists().Wait();
         }
 
-        private async Task CreateIndexIfNotExists()
-        {
-            var exists = await _client.Indices.ExistsAsync(_indexName);
-            Trace.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
-
-            if (!exists.Exists)
-            {
-                await _client.Indices.CreateAsync(_indexName);
-                Trace.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
-            }
-        }
-
-
         public Task LogInformation(string message, object? data = null)
             => LogAsync("INFO", message, null, data);
 
@@ -52,6 +39,7 @@ namespace Kibana_Logging
         public Task LogError(string message, Exception ex, object? data = null)
             => LogAsync("ERROR", message, ex, data);
 
+        #region Private Methods
         private async Task LogAsync(string level, string message, Exception? ex = null, object? data = null)
         {
             try
@@ -66,6 +54,10 @@ namespace Kibana_Logging
                     AdditionalData = data != null ? ConvertToDict(data) : null
                 };
 
+                if(level == "ERROR" && ex != null)
+                {
+                    log.StackTrace = ex.StackTrace;
+                }
                 var response = await _client.IndexAsync(log);
 
                 Trace.WriteLine($"\"LoggerService\" => Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
@@ -86,5 +78,18 @@ namespace Kibana_Logging
             JsonSerializer.Deserialize<Dictionary<string, object>>(
                 JsonSerializer.Serialize(obj)
             )!;
+
+        private async Task CreateIndexIfNotExists()
+        {
+            var exists = await _client.Indices.ExistsAsync(_indexName);
+            Trace.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
+
+            if (!exists.Exists)
+            {
+                await _client.Indices.CreateAsync(_indexName);
+                Trace.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
+            }
+        }
+        #endregion Private Methods
     }
 }
