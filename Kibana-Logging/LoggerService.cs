@@ -8,7 +8,7 @@ namespace Kibana_Logging
     public class LoggerService : ILoggerService
     {
         private readonly ElasticsearchClient _client;
-        private readonly string _indexName = "dev-rabbit";
+        private readonly string _indexName;
         private IConfiguration _configuration;
         private readonly LogLevel _logLevel;
 
@@ -20,6 +20,8 @@ namespace Kibana_Logging
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
             Trace.WriteLine($"\"LoggerService\" => Elasticsearch uri : {uri?.ToString()}");
             Trace.WriteLine($"\"LoggerService\" => Elasticsearch logging source : {_configuration["RabbitLogging:Source"]}");
+
+            _indexName = _configuration["RabbitLogging:IndexName"] ?? "application-logs";
 
             var settings = new ElasticsearchClientSettings(uri)
                 .DefaultIndex(_indexName)
