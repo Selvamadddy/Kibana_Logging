@@ -1,73 +1,114 @@
 ﻿using Elastic.Clients.Elasticsearch;
-using Elastic.Transport;
 using Microsoft.Extensions.Configuration;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Diagnostics;
 using System.Text.Json;
-using System.Threading.Tasks;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Kibana_Logging
 {
     public class LoggerService : ILoggerService
     {
-        private IConfiguration _configuration;
         private readonly ElasticsearchClient _client;
-        private string _indexName;
+        private readonly string _indexName = "dev-rabbit";
+        private IConfiguration _configuration;
+        private readonly LogLevel _logLevel;
+
         public LoggerService(IConfiguration configuration)
         {
             _configuration = configuration;
+            Trace.Listeners.Add(new DefaultTraceListener());
 
-            var node = new Uri("http://localhost:9200");
+            var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
+            Trace.WriteLine($"\"LoggerService\" => Elasticsearch uri : {uri?.ToString()}");
+            Trace.WriteLine($"\"LoggerService\" => Elasticsearch logging source : {_configuration["RabbitLogging:Source"]}");
 
-            var settings = new ElasticsearchClientSettings(node)
-                                    .DefaultIndex("Dev-rabbit")
-                                    .PrettyJson();
-            // 👈 Forces compatible-with=8
-
-
-            //if (!string.IsNullOrEmpty(username))
-            //{
-            //    settings.Authentication(new BasicAuthentication(username, password!));
-            //}
+            var settings = new ElasticsearchClientSettings(uri)
+                .DefaultIndex(_indexName)
+                .PrettyJson()
+                .DisableDirectStreaming();
 
             _client = new ElasticsearchClient(settings);
-            _indexName = "Dev-rabbit";
+
+            CreateIndexIfNotExists().Wait();
+
+            _logLevel = GetLogLevel();
         }
 
         public Task LogInformation(string message, object? data = null)
-            => LogAsync("INFO", message, null, data);
+            => LogAsync(LogLevel.Information, message, null, data);
+
+        public Task LogDebug(string message, object? data = null)
+            => LogAsync(LogLevel.Debug, message, null, data);
 
         public Task LogWarning(string message, object? data = null)
-            => LogAsync("WARN", message, null, data);
+            => LogAsync(LogLevel.Warning, message, null, data);
 
         public Task LogError(string message, Exception ex, object? data = null)
-            => LogAsync("ERROR", message, ex, data);
+            => LogAsync(LogLevel.Error, message, ex, data);
+
+        public Task LogCritical(string message, Exception ex, object? data = null)
+            => LogAsync(LogLevel.Critical, message, ex, data);
 
         #region Private Methods
-        private async Task LogAsync(string level, string message, Exception? exception = null, object? data = null)
+        private async Task LogAsync(LogLevel logLevel, string message, Exception? ex = null, object? data = null)
         {
-            var log = new LogModel
+            try
             {
-                Level = level,
-                Message = message,
-                Exception = exception?.ToString(),
-                Source = AppDomain.CurrentDomain.FriendlyName,
-                AdditionalData = data != null ? ConvertObjectToDictionary(data) : null,
-            };
+                if (logLevel < _logLevel)
+                    return;
 
-            await _client.IndexAsync(log, idx => idx.Index(_indexName));
+                var log = new LogModel
+                {
+                    Level = logLevel.ToString(),
+                    Message = message,
+                    Timestamp = DateTime.UtcNow,
+                    Exception = ex?.ToString(),
+                    Source = _configuration["RabbitLogging:Source"] ?? throw new ArgumentException("Source can not be null or empty."),
+                    AdditionalData = data != null ? ConvertToDict(data) : null
+                };
 
-            var response = await _client.GetAsync<LogModel>(1, x => x.Index(_indexName));
+                if((logLevel == LogLevel.Error || logLevel == LogLevel.Critical)  && ex != null)
+                {
+                    log.StackTrace = ex.StackTrace;
+                }
+                var response = await _client.IndexAsync(log);
 
-            int aaaaaaaaaaaaa = 2;
+                Trace.WriteLine($"\"LoggerService\" => Log level : {logLevel} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
+
+                if (response != null && !response.IsValidResponse)
+                {
+                    Trace.WriteLine("Failed to index log: " + response.DebugInformation);
+                    Trace.WriteLine("\"LoggerService\" => Failed to index log: " + response.DebugInformation);
+                }
+            }
+            catch (Exception logEx)
+            {
+                Trace.WriteLine($"\"LoggerService\" => Failed to log to Elasticsearch: {logEx.Message}");
+            }
         }
-        private Dictionary<string, object> ConvertObjectToDictionary(object obj) =>
+
+        private Dictionary<string, object> ConvertToDict(object obj) =>
             JsonSerializer.Deserialize<Dictionary<string, object>>(
                 JsonSerializer.Serialize(obj)
             )!;
+
+        private async Task CreateIndexIfNotExists()
+        {
+            var exists = await _client.Indices.ExistsAsync(_indexName);
+            Trace.WriteLine($"\"LoggerService\" => Is index exist : {exists.Exists}. Index Name : {_indexName}");
+
+            if (!exists.Exists)
+            {
+                await _client.Indices.CreateAsync(_indexName);
+                Trace.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
+            }
+        }
+
+        private LogLevel GetLogLevel()
+        {
+            var configuredLogLevel = _configuration["RabbitLogging:LogLevel"] ?? "Information";
+            Trace.WriteLine($"\"LoggerService\" => Configured Log Level : {configuredLogLevel}");
+            return Enum.TryParse<LogLevel>(configuredLogLevel, true, out var parsed) ? parsed : LogLevel.Information;
+        }
         #endregion Private Methods
     }
 }
