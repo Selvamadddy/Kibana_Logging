@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Threading.Tasks;
 
 namespace Kibana_LoggingService.Controllers
 {
@@ -30,9 +29,20 @@ namespace Kibana_LoggingService.Controllers
         [HttpGet]
         public IEnumerable<WeatherForecast> Get()
         {
-            _loggerService.LogInformation("WeatherForecast Get method called.");
-            _logger.LogInformation("WeatherForecast Get method called.");
             Debug.WriteLine("This is a test log message");
+            _loggerService.LogDebug("Debug Weather forecast.");
+            _loggerService.LogInformation("Information Weather forecast.");
+            _loggerService.LogWarning("Warning Weather forecast.");
+            try
+            {
+                var data = 1 / int.Parse("0");
+            }
+            catch (Exception ex)
+            {
+                _loggerService.LogError("Error Weather forecast.",ex);
+                _loggerService.LogCritical("Critical Weather forecast.",ex);
+            }         
+            
             var rng = new Random();
             return Enumerable.Range(1, 5).Select(index => new WeatherForecast
             {

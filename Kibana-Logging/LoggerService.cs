@@ -8,8 +8,9 @@ namespace Kibana_Logging
     public class LoggerService : ILoggerService
     {
         private readonly ElasticsearchClient _client;
-        private string _indexName = "dev-rabbit";
+        private readonly string _indexName = "dev-rabbit";
         private IConfiguration _configuration;
+        private readonly LogLevel _logLevel;
 
         public LoggerService(IConfiguration configuration)
         {
@@ -17,7 +18,7 @@ namespace Kibana_Logging
             Trace.Listeners.Add(new DefaultTraceListener());
 
             var uri = new Uri(_configuration["RabbitLogging:URI"] ?? "");
-            Trace.WriteLine($"\"LoggerService\" => Elasticsearch uri : {uri.ToString()}");
+            Trace.WriteLine($"\"LoggerService\" => Elasticsearch uri : {uri?.ToString()}");
             Trace.WriteLine($"\"LoggerService\" => Elasticsearch logging source : {_configuration["RabbitLogging:Source"]}");
 
             var settings = new ElasticsearchClientSettings(uri)
@@ -28,25 +29,36 @@ namespace Kibana_Logging
             _client = new ElasticsearchClient(settings);
 
             CreateIndexIfNotExists().Wait();
+
+            _logLevel = GetLogLevel();
         }
 
         public Task LogInformation(string message, object? data = null)
-            => LogAsync("INFO", message, null, data);
+            => LogAsync(LogLevel.Information, message, null, data);
+
+        public Task LogDebug(string message, object? data = null)
+            => LogAsync(LogLevel.Debug, message, null, data);
 
         public Task LogWarning(string message, object? data = null)
-            => LogAsync("WARN", message, null, data);
+            => LogAsync(LogLevel.Warning, message, null, data);
 
         public Task LogError(string message, Exception ex, object? data = null)
-            => LogAsync("ERROR", message, ex, data);
+            => LogAsync(LogLevel.Error, message, ex, data);
+
+        public Task LogCritical(string message, Exception ex, object? data = null)
+            => LogAsync(LogLevel.Critical, message, ex, data);
 
         #region Private Methods
-        private async Task LogAsync(string level, string message, Exception? ex = null, object? data = null)
+        private async Task LogAsync(LogLevel logLevel, string message, Exception? ex = null, object? data = null)
         {
             try
             {
+                if (logLevel < _logLevel)
+                    return;
+
                 var log = new LogModel
                 {
-                    Level = level,
+                    Level = logLevel.ToString(),
                     Message = message,
                     Timestamp = DateTime.UtcNow,
                     Exception = ex?.ToString(),
@@ -54,13 +66,13 @@ namespace Kibana_Logging
                     AdditionalData = data != null ? ConvertToDict(data) : null
                 };
 
-                if(level == "ERROR" && ex != null)
+                if((logLevel == LogLevel.Error || logLevel == LogLevel.Critical)  && ex != null)
                 {
                     log.StackTrace = ex.StackTrace;
                 }
                 var response = await _client.IndexAsync(log);
 
-                Trace.WriteLine($"\"LoggerService\" => Log level : {level} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
+                Trace.WriteLine($"\"LoggerService\" => Log level : {logLevel} , Message : {message}, Logging status : {(response.IsSuccess() ? "Sucess" : "Failed")}");
 
                 if (response != null && !response.IsValidResponse)
                 {
@@ -89,6 +101,13 @@ namespace Kibana_Logging
                 await _client.Indices.CreateAsync(_indexName);
                 Trace.WriteLine($"\"LoggerService\" => Created Index Name : {_indexName}");
             }
+        }
+
+        private LogLevel GetLogLevel()
+        {
+            var configuredLogLevel = _configuration["RabbitLogging:LogLevel"] ?? "Information";
+            Trace.WriteLine($"\"LoggerService\" => Configured Log Level : {configuredLogLevel}");
+            return Enum.TryParse<LogLevel>(configuredLogLevel, true, out var parsed) ? parsed : LogLevel.Information;
         }
         #endregion Private Methods
     }
